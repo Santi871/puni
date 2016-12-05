@@ -18,7 +18,7 @@ import zlib
 import base64
 import copy
 
-from praw.errors import NotFound
+from prawcore.exceptions import NotFound
 from .decorators import update_cache
 
 
@@ -158,7 +158,7 @@ class UserNotes(object):
         self.r = r
         self.subreddit = subreddit
 
-        self.cache_timeout = cache_timeout or r.config.cache_timeout
+        self.cache_timeout = cache_timeout
         self.last_visited = 0
         if not lazy_start:
             self.get_json()
@@ -189,10 +189,10 @@ class UserNotes(object):
             # If a 404 error - create the wiki page
             # Otherwise, re-throw the exception
             try:
-                usernotes = self.r.get_wiki_page(self.subreddit, self.page_name)
+                usernotes = self.subreddit.wiki['usernotes']
                 # Remove XML entities and convert into a dict
                 notes = json.loads(usernotes.content_md)
-            except NotFound:
+            except (NotFound, KeyError):
                 # Initializes usernotes with barebones JSON
                 self.init_notes()
             else:
@@ -213,7 +213,7 @@ class UserNotes(object):
             'ver': self.schema,
             'users': {},
             'constants': {
-                'users': [x.name for x in self.subreddit.get_moderators()],
+                'users': [x.name for x in self.subreddit.moderators],
                 'warnings': Note.warnings
             }
         }
@@ -237,7 +237,7 @@ class UserNotes(object):
             raise OverflowError('Usernotes page is too large (>{0} characters)'.
                 format(self.max_page_size))
 
-        self.r.edit_wiki_page(self.subreddit, self.page_name, json.dumps(compressed_json), reason)
+        self.subreddit.wiki.create(self.page_name, json.dumps(compressed_json), reason=reason)
 
     @update_cache
     def get_notes(self, user):
@@ -350,7 +350,7 @@ class UserNotes(object):
         notes = self.cached_json
 
         if not note.moderator:
-            note.moderator = self.r.user.name
+            note.moderator = self.r.user.me().name
 
         # Get index of moderator in mod list from usernotes
         # Add moderator to list if not already there
